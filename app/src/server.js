@@ -34,18 +34,6 @@ dependencies: {
 }
 */
 
-/**
- * MiroTalk P2P - Server component
- *
- * @link    GitHub: https://github.com/miroslavpejic85/mirotalk
- * @link    Official Live demo: https://p2p.mirotalk.com
- * @license For open source use: AGPLv3
- * @license For commercial use or closed source, contact us at license.mirotalk@gmail.com or purchase directly from CodeCanyon
- * @license CodeCanyon: https://codecanyon.net/item/mirotalk-p2p-webrtc-realtime-video-conferences/38376661
- * @author  Miroslav Pejic - miroslav.pejic.85@gmail.com
- * @version 1.4.82
- *
- */
 
 'use strict'; // https://www.w3schools.com/js/js_strict.asp
 
@@ -556,7 +544,7 @@ app.get('/login', (req, res) => {
 });
 
 // Register a new user
-mongoose.connect('mongodb://localhost:27017/my-login-db', { useNewUrlParser: true, useUnifiedTopology: true });
+mongoose.connect('mongodb://localhost:27017/my-login-db');
 
 const userSchema = new mongoose.Schema({
     name: String,

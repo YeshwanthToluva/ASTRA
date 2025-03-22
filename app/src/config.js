@@ -17,7 +17,7 @@ module.exports = {
         },
         og: {
             type: 'app-webrtc',
-            siteName: 'MiroTalk',
+            siteName: 'ASTRA',
             title: 'Click the link to make a call.',
             description:
                 'ASTRA calling provides real-time HD quality and latency simply not available with traditional technology.',
