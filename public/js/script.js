@@ -12,13 +12,13 @@ loginBtn.addEventListener('click', () => {
 });
 
 // Handle Registration
-document.getElementById('signUpForm').addEventListener('submit', async (e) => {
+document.querySelector('.signUpForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const name = e.target.name.value;
-    const email = e.target.email.value;
-    const password = e.target.password.value;
-    const confirmPassword = e.target.confirmPassword.value;
-
+    const name = e.target.querySelector('input[placeholder="Name"]').value;
+    const email = e.target.querySelector('input[placeholder="Email"]').value;
+    const password = e.target.querySelector('input[placeholder="Password"]').value;
+    const confirmPassword = e.target.querySelector('input[placeholder="Confirm-Password"]').value;
+    console.log(name,password,email,confirmPassword);
     if (password !== confirmPassword) {
         alert("Passwords do not match");
         return;
@@ -32,9 +32,9 @@ document.getElementById('signUpForm').addEventListener('submit', async (e) => {
         });
 
         const data = await res.json();
-        if (res.status === 201) {
-            alert('User registered successfully');
-            window.location.href = '/sign-in';
+        if (res.status == 201) {
+            alert('User registered successfully, Please Login');
+            container.classList.remove("active");
         } else {
             alert(data.message || 'Error registering user');
         }
@@ -45,13 +45,13 @@ document.getElementById('signUpForm').addEventListener('submit', async (e) => {
 });
 
 // Handle Login
-document.getElementById('signInForm').addEventListener('submit', async (e) => {
+document.querySelector('.signInForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const email = e.target.email.value;
-    const password = e.target.password.value;
+    const email = e.target.querySelector('input[placeholder="Email"]').value;
+    const password = e.target.querySelector('input[placeholder="Password"]').value;
 
     try {
-        const res = await fetch('http://localhost:3000/login', {
+        const res = await fetch('http://localhost:3000/ulogin', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })

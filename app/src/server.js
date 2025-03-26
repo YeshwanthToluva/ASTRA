@@ -563,19 +563,20 @@ app.post('/register', async (req, res) => {
             password: hashedPassword
         });
         await user.save();
-        res.status(201).send('User registered');
+        res.status(201).json('User registered');
     } catch (error) {
         res.status(400).send('Error registering user');
     }
 });
 
-app.post('/login', async (req, res) => {
+app.post('/ulogin', async (req, res) => {
     console.log('Login endpoint hit');  // Log to verify endpoint is hit
     try {
         const user = await User.findOne({ email: req.body.email });
         console.log('User found:', user);  // Log the user details
         if (user && await bcrypt.compare(req.body.password, user.password)) {
-            const responseMessage = { message: 'User logged in', redirectUrl: '/landing' };
+            const token = jwt.sign({userId:user._id},process.env.JWT_KEY);
+            const responseMessage = { message: 'User logged in', redirectUrl: '/landing',user:user,token:token };
             console.log('Response message:', responseMessage);  // Log the response message
             res.status(200).json(responseMessage);
         } else {

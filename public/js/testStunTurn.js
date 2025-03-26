@@ -22,9 +22,9 @@ if (iceServers) {
         // Test some TURN server
         // https://www.metered.ca/tools/openrelay/
         {
-            urls: 'turn:a.relay.metered.ca:443',
-            username: 'e8dd65b92c62d3e36cafb807',
-            credential: 'uWdWNmkhvyqTEswO',
+            urls: 'turn:freestun.net:3478',
+            username: 'free',
+            credential: 'free',
         },
     ];
 }
