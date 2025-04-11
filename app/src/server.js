@@ -196,10 +196,6 @@ const api_key_secret = process.env.API_KEY_SECRET || 'mirotalkp2p_default_secret
 const apiDisabledString = process.env.API_DISABLED || '["token", "meetings"]';
 const api_disabled = JSON.parse(apiDisabledString);
 
-// Ngrok config
-const ngrok = require('ngrok');
-const ngrokEnabled = getEnvBoolean(process.env.NGROK_ENABLED);
-const ngrokAuthToken = process.env.NGROK_AUTH_TOKEN;
 
 // Stun (https://bloggeek.me/webrtcglossary/stun/)
 // Turn (https://bloggeek.me/webrtcglossary/turn/)
@@ -232,17 +228,10 @@ const surveyURL = process.env.SURVEY_URL || 'https://www.questionpro.com/t/AUs7V
 const redirectEnabled = getEnvBoolean(process.env.REDIRECT_ENABLED);
 const redirectURL = process.env.REDIRECT_URL || '/newcall';
 
-// Sentry config
-const Sentry = require('@sentry/node');
-const sentryEnabled = getEnvBoolean(process.env.SENTRY_ENABLED);
-const sentryDSN = process.env.SENTRY_DSN;
-const sentryTracesSampleRate = process.env.SENTRY_TRACES_SAMPLE_RATE;
 
 // Slack API
 const CryptoJS = require('crypto-js');
 const qS = require('qs');
-const slackEnabled = getEnvBoolean(process.env.SLACK_ENABLED);
-const slackSigningSecret = process.env.SLACK_SIGNING_SECRET;
 
 // Setup sentry client
 if (sentryEnabled) {
@@ -261,108 +250,12 @@ if (sentryEnabled) {
     });
 }
 
-// OpenAI/ChatGPT
-let chatGPT;
-const configChatGPT = {
-    enabled: getEnvBoolean(process.env.CHATGPT_ENABLED),
-    basePath: process.env.CHATGPT_BASE_PATH,
-    apiKey: process.env.CHATGPT_APIKEY,
-    model: process.env.CHATGPT_MODEL,
-    max_tokens: parseInt(process.env.CHATGPT_MAX_TOKENS),
-    temperature: parseInt(process.env.CHATGPT_TEMPERATURE),
-};
-if (configChatGPT.enabled) {
-    if (configChatGPT.apiKey) {
-        const { OpenAI } = require('openai');
-        const configuration = {
-            basePath: configChatGPT.basePath,
-            apiKey: configChatGPT.apiKey,
-        };
-        chatGPT = new OpenAI(configuration);
-    } else {
-        log.warning('ChatGPT seems enabled, but you missing the apiKey!');
-    }
-}
-
-// Mattermost config
-const mattermostCfg = {
-    enabled: getEnvBoolean(process.env.MATTERMOST_ENABLED),
-    server_url: process.env.MATTERMOST_SERVER_URL,
-    username: process.env.MATTERMOST_USERNAME,
-    password: process.env.MATTERMOST_PASSWORD,
-    token: process.env.MATTERMOST_TOKEN,
-    api_disabled: api_disabled,
-};
-
 // IP Whitelist
 const ipWhitelist = {
     enabled: getEnvBoolean(process.env.IP_WHITELIST_ENABLED),
     allowed: process.env.IP_WHITELIST_ALLOWED ? JSON.parse(process.env.IP_WHITELIST_ALLOWED) : [],
 };
 
-// OIDC - Open ID Connect
-const OIDC = {
-    enabled: process.env.OIDC_ENABLED ? getEnvBoolean(process.env.OIDC_ENABLED) : false,
-    baseUrlDynamic: process.env.OIDC_BASE_URL_DYNAMIC ? getEnvBoolean(process.env.OIDC_BASE_URL_DYNAMIC) : false,
-    config: {
-        issuerBaseURL: process.env.OIDC_ISSUER_BASE_URL,
-        clientID: process.env.OIDC_CLIENT_ID,
-        clientSecret: process.env.OIDC_CLIENT_SECRET,
-        baseURL: process.env.OIDC_BASE_URL,
-        secret: process.env.SESSION_SECRET,
-        authorizationParams: {
-            response_type: 'code',
-            scope: 'openid profile email',
-        },
-        authRequired: process.env.OIDC_AUTH_REQUIRED ? getEnvBoolean(process.env.OIDC_AUTH_REQUIRED) : false, // Set to true if authentication is required for all routes
-        auth0Logout: process.env.OIDC_AUTH_LOGOUT ? getEnvBoolean(process.env.OIDC_AUTH_LOGOUT) : true, // Set to true to enable logout with Auth0
-        routes: {
-            callback: '/auth/callback', // Indicating the endpoint where your application will handle the callback from the authentication provider after a user has been authenticated.
-            login: false, // Dedicated route in your application for user login.
-            logout: '/logout', // Indicating the endpoint where your application will handle user logout requests.
-        },
-    },
-};
-
-// Custom middleware function for OIDC authentication
-function OIDCAuth(req, res, next) {
-    if (OIDC.enabled) {
-        function handleHostProtected(req) {
-            if (!hostCfg.protected) return;
-
-            const ip = authHost.getIP(req);
-            hostCfg.authenticated = true;
-            authHost.setAuthorizedIP(ip, true);
-            // Check...
-            log.debug('OIDC ------> Host protected', {
-                authenticated: hostCfg.authenticated,
-                authorizedIPs: authHost.getAuthorizedIPs(),
-            });
-        }
-
-        if (req.oidc.isAuthenticated()) {
-            log.debug('OIDC ------> User already Authenticated');
-            handleHostProtected(req);
-            return next();
-        }
-
-        // Apply requiresAuth() middleware conditionally
-        requiresAuth()(req, res, function () {
-            log.debug('OIDC ------> requiresAuth');
-            // Check if user is authenticated
-            if (req.oidc.isAuthenticated()) {
-                log.debug('[OIDC] ------> User isAuthenticated');
-                handleHostProtected(req);
-                next();
-            } else {
-                // User is not authenticated
-                res.status(401).send('Unauthorized');
-            }
-        });
-    } else {
-        next();
-    }
-}
 
 // stats configuration
 const statsData = {
@@ -544,7 +437,7 @@ app.get('/login', (req, res) => {
 });
 
 // Register a new user
-mongoose.connect('mongodb://localhost:27017/my-login-db');
+mongoose.connect(process.env.MONGO_URI);
 
 const userSchema = new mongoose.Schema({
     name: String,
@@ -995,47 +888,6 @@ app.post(`${apiBasePath}/join`, (req, res) => {
     });
 });
 
-/*
-    MiroTalk Slack app v1
-    https://api.slack.com/authentication/verifying-requests-from-slack
-*/
-
-// Slack request meeting room endpoint
-app.post('/slack', (req, res) => {
-    if (!slackEnabled) return res.end('`Under maintenance` - Please check back soon.');
-
-    // Check if endpoint allowed
-    if (api_disabled.includes('slack')) {
-        return res.end('`This endpoint has been disabled`. Please contact the administrator for further information.');
-    }
-
-    log.debug('Slack', req.headers);
-
-    if (!slackSigningSecret) return res.end('`Slack Signing Secret is empty!`');
-
-    const slackSignature = req.headers['x-slack-signature'];
-    const requestBody = qS.stringify(req.body, { format: 'RFC1738' });
-    const timeStamp = req.headers['x-slack-request-timestamp'];
-    const time = Math.floor(new Date().getTime() / 1000);
-
-    // The request timestamp is more than five minutes from local time. It could be a replay attack, so let's ignore it.
-    if (Math.abs(time - timeStamp) > 300) return res.end('`Wrong timestamp` - Ignore this request.');
-
-    // Get Signature to compare it later
-    const sigBaseString = 'v0:' + timeStamp + ':' + requestBody;
-    const mySignature = 'v0=' + CryptoJS.HmacSHA256(sigBaseString, slackSigningSecret);
-
-    // Valid Signature return a meetingURL
-    if (mySignature == slackSignature) {
-        const host = req.headers.host;
-        const meetingURL = getMeetingURL(host);
-        log.debug('Slack', { meeting: meetingURL });
-        return res.end(meetingURL);
-    }
-    // Something wrong
-    return res.end('`Wrong signature` - Verification failed!');
-});
-
 /**
  * Request meeting room endpoint
  * @returns  entrypoint / Room URL for your meeting.
@@ -1085,20 +937,8 @@ function getServerConfig(tunnel = false) {
 
         // Integrations
         chatGPT_enabled: configChatGPT.enabled ? configChatGPT : false,
-        slack_enabled: slackEnabled,
-        mattermost_enabled: mattermostCfg.enabled ? mattermostCfg : false,
-
-        // Monitoring and Logging
-        sentry_enabled: sentryEnabled,
         stats: statsData.enabled ? statsData : false,
 
-        // Ngrok Configuration
-        ngrok: ngrokEnabled
-            ? {
-                  enabled: ngrokEnabled,
-                  token: ngrokAuthToken,
-              }
-            : false,
 
         // URLs for Redirection and Survey
         survey: surveyEnabled ? surveyURL : false,
