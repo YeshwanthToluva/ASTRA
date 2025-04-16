@@ -24,7 +24,6 @@ dependencies: {
     jsdom                   : https://www.npmjs.com/package/jsdom
     jsonwebtoken            : https://www.npmjs.com/package/jsonwebtoken
     js-yaml                 : https://www.npmjs.com/package/js-yaml
-    ngrok                   : https://www.npmjs.com/package/ngrok
     nodemailer              : https://www.npmjs.com/package/nodemailer
     openai                  : https://www.npmjs.com/package/openai
     qs                      : https://www.npmjs.com/package/qs
@@ -39,7 +38,6 @@ dependencies: {
 
 require('dotenv').config();
 
-const { auth, requiresAuth } = require('express-openid-connect');
 const { Server } = require('socket.io');
 const http = require('http');
 const https = require('https');
@@ -54,7 +52,6 @@ const app = express();
 const fs = require('fs');
 const checkXSS = require('./xss.js');
 const ServerApi = require('./api');
-const mattermostCli = require('./mattermost');
 const Validate = require('./validate');
 const HtmlInjector = require('./htmlInjector');
 const Host = require('./host');
@@ -231,24 +228,7 @@ const redirectURL = process.env.REDIRECT_URL || '/newcall';
 
 // Slack API
 const CryptoJS = require('crypto-js');
-const qS = require('qs');
 
-// Setup sentry client
-if (sentryEnabled) {
-    Sentry.init({
-        dsn: sentryDSN,
-        integrations: [
-            Sentry.captureConsoleIntegration({
-                // ['log', 'info', 'warn', 'error', 'debug', 'assert']
-                levels: ['warn', 'error'],
-            }),
-        ],
-        // Set tracesSampleRate to 1.0 to capture 100%
-        // of transactions for performance monitoring.
-        // We recommend adjusting this value in production
-        tracesSampleRate: sentryTracesSampleRate,
-    });
-}
 
 // IP Whitelist
 const ipWhitelist = {
@@ -323,8 +303,6 @@ app.use((req, res, next) => {
     next();
 });
 
-// Mattermost
-const mattermost = new mattermostCli(app, mattermostCfg);
 
 // POST start from here...
 app.post('*', function (next) {
@@ -354,70 +332,13 @@ app.use((err, req, res, next) => {
     }
 });
 
-// OpenID Connect - Dynamically set baseURL based on incoming host and protocol
-if (OIDC.enabled) {
-    const getDynamicConfig = (host, protocol) => {
-        const baseURL = `${protocol}://${host}`;
 
-        const config = OIDC.baseUrlDynamic
-            ? {
-                  ...OIDC.config,
-                  baseURL,
-              }
-            : OIDC.config;
-
-        log.debug('OIDC baseURL', config.baseURL);
-
-        return config;
-    };
-
-    // Apply the authentication middleware using dynamic baseURL configuration
-    app.use((req, res, next) => {
-        const host = req.headers.host;
-        const protocol = req.protocol === 'https' ? 'https' : 'http';
-        const dynamicOIDCConfig = getDynamicConfig(host, protocol);
-        try {
-            auth(dynamicOIDCConfig)(req, res, next);
-        } catch (err) {
-            log.error('OIDC Auth Middleware Error', err);
-            process.exit(1);
-        }
-    });
-}
-
-// Route to display user information
-app.get('/profile', OIDCAuth, (req, res) => {
-    if (OIDC.enabled) {
-        return res.json(req.oidc.user); // Send user information as JSON
-    }
-    res.sendFile(views.notFound);
-});
 
 // Authentication Callback Route
 app.get('/auth/callback', (req, res, next) => {
     next(); // Let express-openid-connect handle this route
 });
 
-// Logout Route
-app.get('/logout', (req, res) => {
-    if (OIDC.enabled) {
-        //
-        if (hostCfg.protected) {
-            const ip = authHost.getIP(req);
-            if (authHost.isAuthorizedIP(ip)) {
-                authHost.deleteIP(ip);
-            }
-            hostCfg.authenticated = false;
-            //
-            log.debug('[OIDC] ------> Logout', {
-                authenticated: hostCfg.authenticated,
-                authorizedIPs: authHost.getAuthorizedIPs(),
-            });
-        }
-        req.logout(); // Logout user
-    }
-    res.redirect('/'); // Redirect to the home page after logout
-});
 
 
 
@@ -490,35 +411,13 @@ app.post('/ulogin', async (req, res) => {
 
 
 // main page
-app.get('/landing', OIDCAuth, (req, res) => {
-    if (!OIDC.enabled && hostCfg.protected) {
-        const ip = getIP(req);
-        if (allowedIP(ip)) {
-            htmlInjector.injectHtml(views.landing, res);
-            hostCfg.authenticated = true;
-        } else {
-            hostCfg.authenticated = false;
-            res.redirect('/login');
-        }
-    } else {
-        return htmlInjector.injectHtml(views.landing, res);
-    }
+app.get('/landing', (req, res) => {
+    return htmlInjector.injectHtml(views.landing, res);
 });
 
 // set new room name and join
-app.get('/newcall', OIDCAuth, (req, res) => {
-    if (!OIDC.enabled && hostCfg.protected) {
-        const ip = getIP(req);
-        if (allowedIP(ip)) {
-            res.redirect('/');
-            hostCfg.authenticated = true;
-        } else {
-            hostCfg.authenticated = false;
-            res.redirect('/login');
-        }
-    } else {
-        htmlInjector.injectHtml(views.newCall, res);
-    }
+app.get('/newcall', (req, res) => {
+    htmlInjector.injectHtml(views.newCall, res);
 });
 
 // Get stats endpoint
@@ -605,10 +504,8 @@ app.get('/join/', async (req, res) => {
             }
         }
 
-        const OIDCUserAuthenticated = OIDC.enabled && req.oidc.isAuthenticated();
-
         // Peer valid going to auth as host
-        if ((hostCfg.protected && isPeerValid && isPeerPresenter && !hostCfg.authenticated) || OIDCUserAuthenticated) {
+        if ((hostCfg.protected && isPeerValid && isPeerPresenter && !hostCfg.authenticated)) {
             const ip = getIP(req);
             hostCfg.authenticated = true;
             authHost.setAuthorizedIP(ip, true);
@@ -649,7 +546,7 @@ app.get('/join/:roomId', function (req, res) {
     if (allowRoomAccess) {
         htmlInjector.injectHtml(views.client, res);
     } else {
-        !OIDC.enabled && hostCfg.protected ? res.redirect('/login') : res.redirect('/');
+        res.redirect('/');
     }
 });
 
@@ -924,7 +821,6 @@ function getServerConfig(tunnel = false) {
         email: nodemailer.emailCfg.alert ? nodemailer.emailCfg : false,
 
         // Security, Authorization, and User Management
-        oidc: OIDC.enabled ? OIDC : false,
         host_protected: hostCfg.protected || hostCfg.user_auth ? hostCfg : false,
         presenters: roomPresenters,
         ip_whitelist: ipWhitelist.enabled ? ipWhitelist : false,
@@ -936,7 +832,6 @@ function getServerConfig(tunnel = false) {
         ip_lookup_enabled: IPLookupEnabled,
 
         // Integrations
-        chatGPT_enabled: configChatGPT.enabled ? configChatGPT : false,
         stats: statsData.enabled ? statsData : false,
 
 
@@ -950,26 +845,9 @@ function getServerConfig(tunnel = false) {
     };
 }
 
-/**
- * Expose server to external with https tunnel using ngrok
- * https://ngrok.com
- */
-async function ngrokStart() {
-    try {
-        await ngrok.authtoken(ngrokAuthToken);
-        await ngrok.connect(port);
-        const api = ngrok.getApi();
-        const list = await api.listTunnels();
-        const tunnel = list.tunnels[0].public_url;
-        log.info('Server config', getServerConfig(tunnel));
-    } catch (err) {
-        log.warn('[Error] ngrokStart', err.body);
-        process.exit(1);
-    }
-}
 
 /**
- * Start Local Server with ngrok https tunnel (optional)
+ * Start Local Server
  */
 server.listen(port, null, () => {
     log.debug(
@@ -986,12 +864,7 @@ server.listen(port, null, () => {
         'font-family:monospace',
     );
 
-    // https tunnel
-    if (ngrokEnabled && isHttps === false) {
-        ngrokStart();
-    } else {
-        log.info('Server config', getServerConfig());
-    }
+    log.info('Server config', getServerConfig());
 });
 
 /**
@@ -1055,51 +928,6 @@ io.sockets.on('connect', async (socket) => {
                         log.debug('Peer name found', { peer_name: peer_name, room_id: room_id });
                         cb(true);
                         break;
-                    }
-                }
-                break;
-            case 'getChatGPT':
-                // https://platform.openai.com/docs/introduction
-                if (!configChatGPT.enabled) return cb({ message: 'ChatGPT seems disabled, try later!' });
-                // https://platform.openai.com/docs/api-reference/completions/create
-                try {
-                    const { time, prompt, context } = params;
-                    // Add the prompt to the context
-                    context.push({ role: 'user', content: prompt });
-                    // Call OpenAI's API to generate response
-                    const completion = await chatGPT.chat.completions.create({
-                        model: configChatGPT.model || 'gpt-3.5-turbo',
-                        messages: context,
-                        max_tokens: configChatGPT.max_tokens || 1000,
-                        temperature: configChatGPT.temperature || 0,
-                    });
-                    // Extract message from completion
-                    const message = completion.choices[0].message.content.trim();
-                    // Add response to context
-                    context.push({ role: 'assistant', content: message });
-                    // Log conversation details
-                    log.info('ChatGPT', {
-                        time: time,
-                        room: room_id,
-                        name: peer_name,
-                        context: context,
-                    });
-                    // Callback response to client
-                    cb({ message: message, context: context });
-                } catch (error) {
-                    if (error.name === 'APIError') {
-                        log.error('ChatGPT', {
-                            name: error.name,
-                            status: error.status,
-                            message: error.message,
-                            code: error.code,
-                            type: error.type,
-                        });
-                        cb({ message: error.message });
-                    } else {
-                        // Non-API error
-                        log.error('ChatGPT', error);
-                        cb({ message: error.message });
                     }
                 }
                 break;
@@ -1963,26 +1791,23 @@ function getActiveRooms() {
  * @returns boolean true/false
  */
 function isAllowedRoomAccess(logMessage, req, hostCfg, peers, roomId) {
-    const OIDCUserAuthenticated = OIDC.enabled && req.oidc.isAuthenticated();
     const hostUserAuthenticated = hostCfg.protected && hostCfg.authenticated;
     const roomExist = roomId in peers;
     const roomCount = Object.keys(peers).length;
 
     const allowRoomAccess =
-        (!hostCfg.protected && !OIDC.enabled) || // No host protection and OIDC mode enabled (default)
-        (OIDCUserAuthenticated && roomExist) || // User authenticated via OIDC and room Exist
+        (!hostCfg.protected) || // No host protection
+        (roomExist) || // room Exist
         (hostUserAuthenticated && roomExist) || // User authenticated via Login and room Exist
-        ((OIDCUserAuthenticated || hostUserAuthenticated) && roomCount === 0) || // User authenticated joins the first room
+        ((hostUserAuthenticated) && roomCount === 0) || // User authenticated joins the first room
         roomExist; // User Or Guest join an existing Room
 
     log.debug(logMessage, {
-        OIDCUserAuthenticated: OIDCUserAuthenticated,
         hostUserAuthenticated: hostUserAuthenticated,
         roomExist: roomExist,
         roomCount: roomCount,
         extraInfo: {
             roomId: roomId,
-            OIDCUserEnabled: OIDC.enabled,
             hostProtected: hostCfg.protected,
             hostAuthenticated: hostCfg.authenticated,
         },

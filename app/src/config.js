@@ -3,10 +3,9 @@
 const packageJson = require('../../package.json');
 
 module.exports = {
-    // Branding and customizations require a license: https://codecanyon.net/item/mirotalk-p2p-webrtc-realtime-video-conferences/38376661
     brand: {
         app: {
-            language: 'en', // https://en.wikipedia.org/wiki/List_of_ISO_639_language_codes
+            language: 'en', 
             name: 'ASTRA',
             title: 'ASTRA<br />Free browser based Real-time video calls.<br />Simple, Secure, Fast.',
             description:
@@ -109,7 +108,6 @@ module.exports = {
             showMaxBtn: true,
             showSaveMessageBtn: true,
             showMarkDownBtn: true,
-            showChatGPTBtn: true,
             showFileShareBtn: true,
             showShareVideoAudioBtn: true,
             showParticipantsBtn: true,
